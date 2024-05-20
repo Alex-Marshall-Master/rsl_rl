@@ -144,7 +144,6 @@ class OnPolicyRunner:
             with torch.inference_mode():
                 for i in range(self.num_steps_per_env):
                     actions = self.alg.act(obs, critic_obs)
-                    print("\nactions:", actions)
                     obs, rewards, dones, infos = self.env.step(actions)
                     obs = self.obs_normalizer(obs)
                     if "critic" in infos["observations"]:
