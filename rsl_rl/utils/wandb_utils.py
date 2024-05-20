@@ -76,3 +76,6 @@ class WandbSummaryWriter(SummaryWriter):
     def save_model(self, model_path, iter):
         pass
         # wandb.save(model_path)
+
+    def save_file(self, path, iter=None):
+        wandb.save(path, base_path=os.path.dirname(path))

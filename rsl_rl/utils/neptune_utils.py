@@ -8,14 +8,14 @@ from dataclasses import asdict
 from torch.utils.tensorboard import SummaryWriter
 
 try:
-    import neptune.new as neptune
+    import neptune
 except ModuleNotFoundError:
     raise ModuleNotFoundError("neptune-client is required to log to Neptune.")
 
 
 class NeptuneLogger:
     def __init__(self, project, token):
-        self.run = neptune.init(project=project, api_token=token)
+        self.run = neptune.init_run(project=project, api_token=token)
 
     def store_config(self, env_cfg, runner_cfg, alg_cfg, policy_cfg):
         self.run["runner_cfg"] = runner_cfg
@@ -86,3 +86,7 @@ class NeptuneSummaryWriter(SummaryWriter):
 
     def save_model(self, model_path, iter):
         self.neptune_logger.run["model/saved_model_" + str(iter)].upload(model_path)
+
+    def save_file(self, path, iter=None):
+        name = path.rsplit("/", 1)[-1].split(".")[0]
+        self.neptune_logger.run["git_diff/" + name].upload(path)
