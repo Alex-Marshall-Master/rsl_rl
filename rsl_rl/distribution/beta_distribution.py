@@ -30,7 +30,8 @@ class BetaDistribution(nn.Module):
 
     def get_beta_parameters(self, logits):
         ratio = self.sigmoid(logits[:, : self.output_dim])  # (0, 1) a/(a+b) (Mean)
-        sum = (self.soft_plus(logits[:, self.output_dim :]) + 1) * self.scale  # (1, ~ (a+b)
+        sum_logits = logits[:, self.output_dim:]  # Extract the second half for sum
+        sum = (self.soft_plus(sum_logits) + 1) * self.scale  # (1, ~ (a+b))
 
         alpha = ratio * sum
         beta = sum - alpha
@@ -39,24 +40,26 @@ class BetaDistribution(nn.Module):
         alpha += 1.0e-6
         beta += 1.0e-6
 
-        # logits_pos = self.soft_plus(logits)
-        # alpha = logits_pos[:, :self.output_dim] + 1
-        # beta = logits_pos[:, self.output_dim:] + 1
         return alpha, beta
-
+    
+    def forward(self, logits):
+        self.alpha, self.beta = self.get_beta_parameters(logits)
+        self.distribution = Beta(self.alpha, self.beta)
+        return self.distribution
+    
     def mean(self, logits):
         return self.sigmoid(logits[:, : self.output_dim])  # Output is between 0 and 1
 
     def sample(self, logits):
-        self.alpha, self.beta = self.get_beta_parameters(logits)
-        self.distribution = Beta(self.alpha, self.beta)
-
+        self.forward(logits)
         samples = self.distribution.sample()
+        scaled_samples = 2 * samples - 1  # Scale to range [-1, 1]
         log_prob = self.distribution.log_prob(samples).sum(dim=-1)
-        return samples, log_prob
+        return scaled_samples, log_prob
 
     def log_prob(self, samples):
-        return self.distribution.log_prob(samples).sum(dim=-1)
+        unscaled_samples = (samples + 1) / 2  # Rescale back to [0, 1]
+        return self.distribution.log_prob(unscaled_samples).sum(dim=-1)
 
     def entropy(self):
         return self.distribution.entropy()

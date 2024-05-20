@@ -91,8 +91,10 @@ class PPOBeta:
         self.transition.dones = dones
         # Bootstrapping on time outs
         if "time_outs" in infos:
-            self.transition.rewards += self.gamma * torch.squeeze(
-                self.transition.values * infos["time_outs"].unsqueeze(1).to(self.device), 1
+            # Ensure time_outs is broadcasted to match the shape of values
+            time_outs_broadcasted = infos["time_outs"].unsqueeze(1).expand_as(self.transition.values).to(self.device)
+            self.transition.rewards += self.gamma * torch.sum(
+                self.transition.values * time_outs_broadcasted, dim=1
             )
 
         # Record the transition

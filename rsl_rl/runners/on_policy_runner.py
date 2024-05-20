@@ -11,7 +11,7 @@ from collections import deque
 from torch.utils.tensorboard import SummaryWriter as TensorboardSummaryWriter
 
 import rsl_rl
-from rsl_rl.algorithms import PPO
+from rsl_rl.algorithms import PPO, PPOBeta
 from rsl_rl.env import VecEnv
 from rsl_rl.modules import ActorCritic, ActorCriticRecurrent, ActorCriticBeta, EmpiricalNormalization, ActorCriticSeparate, SimpleNavPolicy
 from rsl_rl.utils import store_code_state
@@ -33,12 +33,46 @@ class OnPolicyRunner:
             num_critic_obs = extras["observations"]["critic"].shape[1]
         else:
             num_critic_obs = num_obs
-        actor_critic_class = eval(self.policy_cfg.pop("class_name"))  # ActorCritic | ActorCriticRecurrent | ActorCriticBeta | ActorCriticSeparate
-        actor_critic: ActorCritic | ActorCriticRecurrent | ActorCriticBeta | ActorCriticSeparate = actor_critic_class(
-            num_obs, num_critic_obs, self.env.num_actions, **self.policy_cfg
-        ).to(self.device)
-        alg_class = eval(self.alg_cfg.pop("class_name"))  # PPO
-        self.alg: PPO = alg_class(actor_critic, device=self.device, **self.alg_cfg)
+        actor_critic_class_name = self.policy_cfg.pop("class_name")
+        actor_critic_class = eval(actor_critic_class_name)  # ActorCritic | ActorCriticRecurrent | ActorCriticBeta | ActorCriticSeparate
+        actor_critic: ActorCritic | ActorCriticRecurrent | ActorCriticBeta | ActorCriticSeparate
+        if actor_critic_class_name == "ActorCriticSeparate":
+            # Extract the actor and critic configurations
+            actor_cfg = self.policy_cfg.pop("actor_architecture")
+            critic_cfg = self.policy_cfg.pop("critic_architecture")
+            action_distribution_cfg = self.policy_cfg.pop("action_distribution")
+
+            # Initialize the actor model
+            actor_model = SimpleNavPolicy(
+                num_actor_obs=num_obs,
+                num_critic_obs=num_critic_obs,
+                num_actions=self.env.num_actions,
+                **actor_cfg
+            )
+
+            # Initialize the critic model
+            critic_model = SimpleNavPolicy(
+                num_actor_obs=num_obs,
+                num_critic_obs=num_critic_obs,
+                num_actions=1,
+                **critic_cfg
+            )
+
+            # Initialize the actor distribution
+            action_distribution = BetaDistribution(
+                dim=int(action_distribution_cfg["num_logits"]/2),
+                cfg=action_distribution_cfg
+            )
+
+            actor_critic = ActorCriticSeparate(
+                actor_model=actor_model,
+                critic_model=critic_model,
+                actor_distribution=action_distribution
+            ).to(self.device)
+        else:
+            actor_critic = actor_critic_class(num_obs, num_critic_obs, self.env.num_actions, **self.policy_cfg).to(self.device)
+        alg_class = eval(self.alg_cfg.pop("class_name"))  # PPO | PPOBeta
+        self.alg: PPO | PPOBeta = alg_class(actor_critic, device=self.device, **self.alg_cfg)
         self.num_steps_per_env = self.cfg["num_steps_per_env"]
         self.save_interval = self.cfg["save_interval"]
         self.empirical_normalization = self.cfg["empirical_normalization"]
@@ -110,6 +144,7 @@ class OnPolicyRunner:
             with torch.inference_mode():
                 for i in range(self.num_steps_per_env):
                     actions = self.alg.act(obs, critic_obs)
+                    print("\nactions:", actions)
                     obs, rewards, dones, infos = self.env.step(actions)
                     obs = self.obs_normalizer(obs)
                     if "critic" in infos["observations"]:
@@ -147,7 +182,7 @@ class OnPolicyRunner:
                 start = stop
                 self.alg.compute_returns(critic_obs)
 
-            mean_value_loss, mean_surrogate_loss = self.alg.update()
+            mean_value_loss, mean_surrogate_loss, mean_entropy_bonus = self.alg.update()
             stop = time.time()
             learn_time = stop - start
             self.current_learning_iteration = it

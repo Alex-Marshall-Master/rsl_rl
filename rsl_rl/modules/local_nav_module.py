@@ -17,12 +17,13 @@ class SimpleNavPolicy(nn.Module):
         activation: str,
         scan_cnn_channels: list[int],
         scan_cnn_fc_shape: list[int],
-        scan_latent_size: list[int],
+        scan_latent_size: int,
         history_channels: list[int],
         history_fc_shape: list[int],
-        history_latent_size: list[int],
-        history_kernel_size: list[int],
+        history_latent_size: int,
+        history_kernel_size: int,
         output_mlp_size: list[int],
+        actor_model: bool = True, # default to use actor model
         **kwargs
     ):
         super().__init__()
@@ -38,7 +39,13 @@ class SimpleNavPolicy(nn.Module):
         self.num_obs = self.h_map_size + self.prop_size + self.history_obs_size
         assert self.num_obs == num_actor_obs, "num_obs and num_actor_obs should be the same"
 
-        self.action_size = num_actions
+        if actor_model:
+            self.action_size = num_actions * 2 # Ensure the action head produces 2 * num_actions logits
+        else:
+            assert num_actions == 1, "Critic model, the dimension of value output should be 1"
+            self.action_size = num_actions  
+
+        self.num_critic_obs = num_critic_obs
 
         self.num_obs_normalizer = self.h_map_size + self.prop_size
 
@@ -62,8 +69,8 @@ class SimpleNavPolicy(nn.Module):
         self.action_head = MLP(
             output_mlp_size,
             self.activation_fn,
-            self.prop_size+ scan_latent_size + history_latent_size,
-            self.action_size,
+            self.prop_size + scan_latent_size + history_latent_size,
+            self.action_size, 
             init_scale=1.0 / np.sqrt(2),
         )
 

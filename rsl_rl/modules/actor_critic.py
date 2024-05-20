@@ -57,8 +57,8 @@ class ActorCritic(nn.Module):
                 critic_layers.append(activation)
         self.critic = nn.Sequential(*critic_layers)
 
-        print(f"Actor MLP: {self.actor}")
-        print(f"Critic MLP: {self.critic}")
+        # print(f"Actor MLP: {self.actor}")
+        # print(f"Critic MLP: {self.critic}")
 
         # Action noise
         self.std = nn.Parameter(init_noise_std * torch.ones(num_actions))
@@ -116,7 +116,7 @@ class ActorCritic(nn.Module):
         return value
 
 
-class ActorCriticSeparate(nn.Module):
+class ActorCriticSeparate(ActorCritic):
     is_recurrent = False
 
     def __init__(
@@ -131,7 +131,7 @@ class ActorCriticSeparate(nn.Module):
                 "ActorCritic.__init__ got unexpected arguments, which will be ignored: "
                 + str([key for key in kwargs.keys()])
             )
-        super(ActorCriticSeparate, self).__init__()
+        super(ActorCriticSeparate, self).__init__(actor_model.num_obs, actor_model.num_critic_obs, actor_model.action_size)
 
         # Policy
         self.actor = actor_model
@@ -139,18 +139,17 @@ class ActorCriticSeparate(nn.Module):
         # Value function
         self.critic = critic_model
 
-    def reset(self, dones=None):
-        pass
+        # 
+        print(f"Actor MLP: {self.actor}")
+        print(f"Critic MLP: {self.critic}")
 
-    def forward(self):
-        raise NotImplementedError
-
-    @property
-    def entropy(self):
-        return self.distribution.entropy()
-    
-    def act(self, observations, **kwargs):
+    def update_distribution(self, observations):
         logits = self.actor(observations)
+        self.distribution(logits)  # This updates the distribution using the forward method
+        return logits
+
+    def act(self, observations, **kwargs):
+        logits = self.update_distribution(observations)
         actions, log_prob = self.distribution.sample(logits)
         return actions, log_prob
 
@@ -170,7 +169,7 @@ class ActorCriticSeparate(nn.Module):
     def log_info(self):
         return self.distribution.log_info()
     
-    
+
 def get_activation(act_name):
     if act_name == "elu":
         return nn.ELU()
