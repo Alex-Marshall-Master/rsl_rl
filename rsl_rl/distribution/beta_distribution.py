@@ -36,10 +36,14 @@ class BetaDistribution(nn.Module):
         alpha = ratio * sum
         beta = sum - alpha
 
-        # For numerical stability
-        alpha += 1.0e-6
-        beta += 1.0e-6
+        # Ensure alpha and beta are strictly positive
+        alpha = alpha.clamp(min=1.0e-6)
+        beta = beta.clamp(min=1.0e-6)
 
+        # Check for NaN or inf values in alpha and beta
+        if torch.isnan(alpha).any() or torch.isinf(alpha).any() or torch.isnan(beta).any() or torch.isinf(beta).any():
+            raise ValueError("Alpha or Beta parameters contain NaN or inf values.")
+    
         return alpha, beta
     
     def forward(self, logits):
