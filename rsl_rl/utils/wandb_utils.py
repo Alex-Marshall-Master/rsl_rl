@@ -73,6 +73,9 @@ class WandbSummaryWriter(SummaryWriter):
     def log_config(self, env_cfg, runner_cfg, alg_cfg, policy_cfg):
         self.store_config(env_cfg, runner_cfg, alg_cfg, policy_cfg)
 
+    def log_video(self, video_path, step):
+        wandb.log({"video": wandb.Video(video_path, fps=4, format="gif")}, step=step)
+
     def save_model(self, model_path, iter):
         pass
         # wandb.save(model_path)

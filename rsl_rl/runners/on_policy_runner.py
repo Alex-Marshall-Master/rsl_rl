@@ -75,6 +75,7 @@ class OnPolicyRunner:
         self.alg: PPO | PPOBeta = alg_class(actor_critic, device=self.device, **self.alg_cfg)
         self.num_steps_per_env = self.cfg["num_steps_per_env"]
         self.save_interval = self.cfg["save_interval"]
+        self.video_interval = self.cfg["video_interval"]
         self.empirical_normalization = self.cfg["empirical_normalization"]
         if self.empirical_normalization:
             self.obs_normalizer = EmpiricalNormalization(shape=[num_obs], until=1.0e8).to(self.device)
@@ -98,6 +99,13 @@ class OnPolicyRunner:
         self.tot_time = 0
         self.current_learning_iteration = 0
         self.git_status_repos = [rsl_rl.__file__]
+    
+    def log_video(self, step):
+        if self.cfg.get("video", False):
+            video_path = os.path.join(self.log_dir, "videos")
+            if os.path.exists(video_path):
+                if self.logger_type == "wandb":
+                    self.writer.log_video(video_path, step)
 
     def learn(self, num_learning_iterations: int, init_at_random_ep_len: bool = False):
         # initialize writer
@@ -187,6 +195,9 @@ class OnPolicyRunner:
             self.current_learning_iteration = it
             if self.log_dir is not None:
                 self.log(locals())
+                # Log video to Wandb
+                if self.logger_type == "wandb" and it % self.video_interval == 0:
+                    self.log_video(it)
             if it % self.save_interval == 0:
                 self.save(os.path.join(self.log_dir, f"model_{it}.pt"))
             ep_infos.clear()
