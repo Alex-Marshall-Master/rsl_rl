@@ -7,6 +7,7 @@ import os
 import statistics
 import time
 import torch
+import glob
 from collections import deque
 from torch.utils.tensorboard import SummaryWriter as TensorboardSummaryWriter
 
@@ -27,6 +28,7 @@ class OnPolicyRunner:
         self.policy_cfg = train_cfg["policy"]
         self.device = device
         self.env = env
+        self.logged_videos = set()
         obs, extras = self.env.get_observations()
         num_obs = obs.shape[1]
         if "critic" in extras["observations"]:
@@ -100,12 +102,30 @@ class OnPolicyRunner:
         self.current_learning_iteration = 0
         self.git_status_repos = [rsl_rl.__file__]
     
-    def log_video(self, step):
+    def log_video(self, step, retry_attempts=10, sleep_interval=1):
         if self.cfg.get("video", False):
             video_path = os.path.join(self.log_dir, "videos")
+            
             if os.path.exists(video_path):
-                if self.logger_type == "wandb":
-                    self.writer.log_video(video_path, step)
+                # Find all video files that match the naming convention
+                video_files = glob.glob(os.path.join(video_path, "rl-video-step-*.mp4"))
+                video_files.sort(key=lambda x: int(os.path.basename(x).split('-')[-1].split('.')[0]))
+
+                for video_file in video_files:
+                    video_step = int(os.path.basename(video_file).split('-')[-1].split('.')[0])
+
+                    if video_step <= step and video_file not in self.logged_videos:
+                        # Wait until the file is fully saved
+                        for _ in range(retry_attempts):
+                            if os.path.exists(video_file) and os.path.getsize(video_file) > 0:
+                                break
+                            time.sleep(sleep_interval)
+                        
+                        # Log the video to wandb
+                        if self.logger_type == "wandb":
+                            self.writer.log_video(video_file, step)
+                            self.logged_videos.add(video_file)
+                            print(f"Logged video {video_file} at step {step}")
 
     def learn(self, num_learning_iterations: int, init_at_random_ep_len: bool = False):
         # initialize writer
