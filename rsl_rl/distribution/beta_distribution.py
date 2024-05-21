@@ -57,13 +57,28 @@ class BetaDistribution(nn.Module):
     def sample(self, logits):
         self.forward(logits)
         samples = self.distribution.sample()
-        scaled_samples = 2 * samples - 1  # Scale to range [-1, 1]
-        log_prob = self.distribution.log_prob(samples).sum(dim=-1)
+        # Scale samples to the desired ranges
+        scaled_samples = torch.empty_like(samples)
+        scaled_samples[:, 0] = torch.clamp(samples[:, 0] * 3.0 - 1.0, -0.999999, 2.999999)  # Scale to range [-1, 2] for vx
+        scaled_samples[:, 1] = torch.clamp(samples[:, 1] * 1.5 - 0.75, -0.749999, 0.749999)  # Scale to range [-0.75, 0.75] for vy
+        scaled_samples[:, 2] = torch.clamp(samples[:, 2] * 2.5 - 1.25, -1.249999, 1.249999)  # Scale to range [-1.25, 1.25] for v_yaw
+
+        # Ensure numerical stability by clamping values
+        log_prob = self.log_prob(scaled_samples)
         return scaled_samples, log_prob
 
-    def log_prob(self, samples):
-        unscaled_samples = (samples + 1) / 2  # Rescale back to [0, 1]
-        return self.distribution.log_prob(unscaled_samples).sum(dim=-1)
+    def log_prob(self, scaled_samples):
+        # Rescale back to [0, 1]
+        unscaled_samples = torch.empty_like(scaled_samples)
+        unscaled_samples[:, 0] = (scaled_samples[:, 0] + 1.0) / 3.0  # Rescale vx to [0, 1]
+        unscaled_samples[:, 1] = (scaled_samples[:, 1] + 0.75) / 1.5  # Rescale vy to [0, 1]
+        unscaled_samples[:, 2] = (scaled_samples[:, 2] + 1.25) / 2.5  # Rescale v_yaw to [0, 1]
+
+        # Ensure numerical stability by clamping values
+        unscaled_samples = torch.clamp(unscaled_samples, 1e-6, 1.0 - 1e-6)
+
+        log_prob = self.distribution.log_prob(unscaled_samples).sum(dim=-1)
+        return log_prob
 
     def entropy(self):
         return self.distribution.entropy()
