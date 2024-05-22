@@ -47,10 +47,6 @@ class SimpleNavPolicy(nn.Module):
 
         self.num_critic_obs = num_critic_obs
 
-        self.num_obs_normalizer = self.h_map_size + self.prop_size
-
-        self.obs_normalizer = EmpiricalNormalization(shape=[self.num_obs_normalizer], until=1.0e8)
-
         grid_map_length = int(np.sqrt(self.h_map_shape[-1]))
         self.scan_encoder = SimpleCNN2([self.h_map_shape[0], grid_map_length, grid_map_length],
                                         scan_cnn_channels,
@@ -75,8 +71,6 @@ class SimpleNavPolicy(nn.Module):
         )
 
     def forward(self, obs: torch.Tensor) -> torch.Tensor:
-        obs_nor = self.obs_normalizer(obs[:,:self.num_obs_normalizer])
-        obs = torch.cat((obs_nor, obs[:,self.num_obs_normalizer:]), dim=1)
 
         prop, scan,  history = self.split_obs(obs)
 
